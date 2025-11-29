@@ -14,6 +14,11 @@ import requests
 from functions.bse_news import summarize_announcements_for_stock
 from functions.chart_maker import get_tradingview_chart_screenshot
 from functions.chart_prediction import detect_chart_pattern, encode_image
+from functions.financial_ratios import analyze_stock_ratios
+from functions.financial_ratios import get_ratios_for_ticker
+from functions.stock_signal_agent import StockSignalInput, run_stock_signal
+
+
 
 # ================== ENV & APP SETUP ==================
 
@@ -261,10 +266,20 @@ def add_to_wishlist():
         merge=True,
     )
 
+    # Fetch updated wishlist
     doc = user_ref.get()
     wishlist = doc.to_dict().get("wishlist", [])
 
-    return jsonify({"userID": uid, "wishlist": wishlist}), 200
+    # 🔥 NEW: compute + cache all data for this stock
+    try:
+        compute_and_cache_stock_for_user(uid, symbol)
+        status_msg = "wishlist updated and stock data cached"
+    except Exception as e:
+        # We don't want to fail wishlist addition just because caching failed
+        status_msg = f"wishlist updated but caching failed: {e}"
+
+    return jsonify({"userID": uid, "wishlist": wishlist, "status": status_msg}), 200
+
 
 
 @app.route("/me/wishlist/remove", methods=["POST"])
@@ -434,6 +449,288 @@ def chart_patterns():
         response_payload[symbol] = result
 
     return jsonify(response_payload), 200
+
+
+@app.route("/ratios", methods=["POST"])
+@verify_firebase_token
+def get_ratios():
+    """
+    Calculate financial ratios for a list of ticker symbols using Yahoo Finance.
+
+    Expected JSON body:
+
+    {
+      "symbols": ["RELIANCE.NS", "TCS.NS"]
+    }
+
+    Response:
+
+    {
+      "RELIANCE.NS": {
+        "ticker": "RELIANCE.NS",
+        "source": "Yahoo Finance",
+        "ratios": {
+          "Debt/Equity": 0.44,
+          "Debt/Assets": 0.19,
+          "Interest Coverage": 5.79,
+          "EBITDA Margin": 18.79,
+          ...
+        },
+        "error": null
+      },
+      "TCS.NS": {
+        ...
+      }
+    }
+    """
+    data = request.get_json(silent=True) or {}
+    symbols = data.get("symbols")
+
+    if not isinstance(symbols, list) or not symbols:
+        return jsonify({"error": "Field 'symbols' must be a non-empty list"}), 400
+
+    response_payload = {}
+
+    for sym in symbols:
+        if not isinstance(sym, str):
+            continue
+
+        sym_clean = sym.strip().upper()
+        result = analyze_stock_ratios(sym_clean)
+        response_payload[sym_clean] = result
+
+    return jsonify(response_payload), 200
+
+@app.route("/prediction", methods=["POST"])
+@verify_firebase_token
+def prediction():
+    """
+    Agentic prediction endpoint using:
+    - Deterministic math in Python (financial ratios via yfinance)
+    - Agno agent + DuckDuckGo for one web search
+    - Groq model for reasoning
+
+    Expected JSON body:
+    {
+      "symbols": ["RELIANCE.NS", "TCS.NS"]
+    }
+
+    Response:
+    {
+      "RELIANCE.NS": {
+        "ticker": "RELIANCE.NS",
+        "bias": "bullish",
+        "confidence": 78,
+        "reasons": [...],
+        "risks": [...],
+        "latest_headlines": [...],
+        "note": "This is an educational analytical view..."
+      },
+      "TCS.NS": { ... }
+    }
+    """
+    data = request.get_json(silent=True) or {}
+    symbols = data.get("symbols")
+
+    if not isinstance(symbols, list) or not symbols:
+        return jsonify({"error": "Field 'symbols' must be a non-empty list"}), 400
+
+    result = {}
+
+    for sym in symbols:
+        if not isinstance(sym, str):
+            continue
+
+        ticker = sym.strip().upper()
+
+        # 1) Deterministic math: compute ratios in Python
+        ratios = get_ratios_for_ticker(ticker)
+        if ratios is None:
+            result[ticker] = {
+                "error": "Could not fetch financial data for this ticker."
+            }
+            continue
+
+        # 2) Build StockSignalInput for the agent
+        ctx = StockSignalInput(
+            ticker=ticker,
+            ratios=ratios,
+        )
+
+        try:
+            # 3) Run the Agno agent (with DuckDuckGo tool)
+            signal = run_stock_signal(ctx)
+            result[ticker] = signal.model_dump()
+        except Exception as e:
+            result[ticker] = {
+                "error": f"Agent error: {str(e)}"
+            }
+
+    return jsonify(result), 200
+
+@app.route("/me/cache", methods=["GET"])
+@verify_firebase_token
+def get_my_cached_stocks():
+    """
+    Returns all cached stock data for the logged-in user.
+    Dashboard can use this endpoint directly.
+
+    Response example:
+    {
+      "userID": "...",
+      "stocks": {
+        "RELIANCE.NS": {
+          "symbol": "RELIANCE.NS",
+          "bse_summaries": {...},
+          "chart_pattern": {...},
+          "ratios": {...},
+          "signal": {...},
+          "updatedAt": ...
+        },
+        "TCS.NS": { ... }
+      }
+    }
+    """
+    uid = request.user["uid"]
+    user_ref = db.collection("users").document(uid)
+    doc = user_ref.get()
+
+    if not doc.exists:
+        return jsonify({"error": "User not found"}), 404
+
+    wishlist = doc.to_dict().get("wishlist", [])
+
+    cache_col = user_ref.collection("stock_cache")
+    cached_docs = cache_col.stream()
+
+    stocks = {}
+    for d in cached_docs:
+        data = d.to_dict() or {}
+        symbol = data.get("symbol") or d.id
+        stocks[symbol] = data
+
+    return jsonify({"userID": uid, "wishlist": wishlist, "stocks": stocks}), 200
+
+@app.route("/me/refresh-cache", methods=["POST"])
+@verify_firebase_token
+def refresh_my_cache():
+    """
+    Recompute and overwrite cached data for all stocks in user's wishlist.
+    Useful when user clicks 'Refresh' on dashboard.
+    """
+    uid = request.user["uid"]
+    user_ref = db.collection("users").document(uid)
+    doc = user_ref.get()
+
+    if not doc.exists:
+        return jsonify({"error": "User not found"}), 404
+
+    data = doc.to_dict() or {}
+    wishlist = data.get("wishlist", [])
+
+    if not wishlist:
+        return jsonify({"userID": uid, "refreshed": [], "message": "Wishlist is empty"}), 200
+
+    refreshed = []
+    errors = {}
+
+    for symbol in wishlist:
+        try:
+            compute_and_cache_stock_for_user(uid, symbol)
+            refreshed.append(symbol)
+        except Exception as e:
+            errors[symbol] = str(e)
+
+    return jsonify(
+        {
+            "userID": uid,
+            "refreshed": refreshed,
+            "errors": errors,
+        }
+    ), 200
+
+
+
+def compute_and_cache_stock_for_user(uid: str, symbol: str):
+    """
+    For a given user + stock symbol:
+    - compute BSE summaries
+    - compute chart pattern (TradingView + Groq vision)
+    - compute financial ratios
+    - run agentic prediction
+    - save everything into users/{uid}/stock_cache/{symbol}
+    """
+    symbol = symbol.strip().upper()
+    user_ref = db.collection("users").document(uid)
+    cache_ref = user_ref.collection("stock_cache").document(symbol)
+
+    cache_data = {
+        "symbol": symbol,
+        "updatedAt": SERVER_TIMESTAMP,
+    }
+
+    # --- 1) BSE Summaries (news) ---
+    try:
+        bse_result = summarize_announcements_for_stock(
+            stock_identifier=symbol,
+            days=60,
+            max_news=3,
+        )
+        cache_data["bse_summaries"] = bse_result
+    except Exception as e:
+        cache_data["bse_error"] = f"{e}"
+
+    # --- 2) Chart pattern (TradingView + Groq vision) ---
+    try:
+        charts_dir = "./charts"
+        os.makedirs(charts_dir, exist_ok=True)
+
+        safe_symbol = symbol.replace(":", "_").replace("/", "_")
+        output_path = os.path.join(charts_dir, f"{safe_symbol}_D.png")
+
+        screenshot_path = get_tradingview_chart_screenshot(
+            tv_symbol=symbol,
+            interval="D",
+            output_path=output_path,
+        )
+
+        raw_pattern = detect_chart_pattern(screenshot_path)
+
+        # detect_chart_pattern currently returns JSON string; try to parse
+        try:
+            pattern_info = json.loads(raw_pattern)
+        except Exception:
+            pattern_info = {"raw": raw_pattern}
+
+        cache_data["chart_pattern"] = pattern_info
+    except Exception as e:
+        cache_data["chart_error"] = f"{e}"
+
+    # --- 3) Financial ratios ---
+    try:
+        ratios = get_ratios_for_ticker(symbol)
+        if ratios is not None:
+            cache_data["ratios"] = ratios
+        else:
+            cache_data["ratios_error"] = "No ratio data available"
+    except Exception as e:
+        cache_data["ratios_error"] = f"{e}"
+        ratios = None
+
+    # --- 4) Agentic prediction (only if ratios available) ---
+    try:
+        if "ratios" in cache_data:
+            ctx = StockSignalInput(
+                ticker=symbol,
+                ratios=cache_data["ratios"],
+            )
+            signal = run_stock_signal(ctx)
+            cache_data["signal"] = signal.model_dump()
+    except Exception as e:
+        cache_data["signal_error"] = f"{e}"
+
+    # --- 5) Save to Firestore ---
+    cache_ref.set(cache_data, merge=True)
 
 # ======================== MAIN ================================
 

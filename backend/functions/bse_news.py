@@ -2,25 +2,44 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from io import BytesIO
 import os
+import json
 
 import requests
 from PyPDF2 import PdfReader
 from bse import BSE
-from groq import Groq
 from dotenv import load_dotenv
 
-# Load .env and read API key
+# 🔹 NEW: Agno + Groq (agentic summarizer)
+from agno.agent import Agent
+from agno.models.groq import Groq
+
+# --------------------------------------------------------------------
+# ENV + AGENT SETUP
+# --------------------------------------------------------------------
+
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 if not GROQ_API_KEY:
     raise RuntimeError("GROQ_API_KEY not found in environment (.env)")
 
-groq_client = Groq(api_key=GROQ_API_KEY)
+# Agno uses GROQ_API_KEY from env internally, we just define the model ID here.
+bse_summary_agent = Agent(
+    model=Groq(id="llama-3.3-70b-versatile"),
+    description=(
+        "You summarize official BSE / stock-exchange filings and announcements for investors. "
+        "You MUST NOT hallucinate or guess, and you must strictly follow the requested output format."
+    ),
+    markdown=False,   # we want plain text, not markdown formatting
+)
 
 # Ensure downloads folder exists
 os.makedirs("./downloads", exist_ok=True)
 
+
+# --------------------------------------------------------------------
+# PDF FETCH + TEXT EXTRACTION
+# --------------------------------------------------------------------
 
 def get_pdf_text_from_attachment(attach_name: str) -> tuple[str, str]:
     """
@@ -84,6 +103,10 @@ def get_pdf_text_from_attachment(attach_name: str) -> tuple[str, str]:
     return "\n".join(all_text_parts), final_url
 
 
+# --------------------------------------------------------------------
+# AGENTIC SUMMARIZATION (Agno + Groq)
+# --------------------------------------------------------------------
+
 def summarize_with_groq(
     pdf_text: str,
     heading: str,
@@ -91,10 +114,12 @@ def summarize_with_groq(
     pdf_url: str,
 ) -> str:
     """
-    Use Groq Llama to turn raw PDF text + BSE heading into:
+    Use an Agno agent (Groq Llama) to turn raw PDF text + BSE heading into:
     - Title
     - Summary (no hallucinations)
     Then append the source PDF link.
+
+    Output format stays EXACTLY like before so callers (main.py) do not change.
     """
     max_chars = 12000
     trimmed = (pdf_text or "").strip()
@@ -145,22 +170,21 @@ Here is the filing text:
 
 \"\"\"{trimmed}\"\"\"""".strip()
 
-    completion = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {
-                "role": "user",
-                "content": prompt,
-            }
-        ],
-        temperature=0.1,
-        max_tokens=512,
-    )
+    # Use Agno agent instead of manual Groq client
+    try:
+        response = bse_summary_agent.run(input=prompt)
+        content = str(response.content).strip()
+    except Exception as e:
+        # Bubble up (caller already handles per-announcement errors)
+        raise RuntimeError(f"Groq summary error: {e}") from e
 
-    content = completion.choices[0].message.content.strip()
     content_with_link = content + (f"\n\nSource PDF: {pdf_url}" if pdf_url else "")
     return content_with_link
 
+
+# --------------------------------------------------------------------
+# BSE ANNOUNCEMENT FETCH + RESOLUTION HELPERS
+# --------------------------------------------------------------------
 
 def fetch_announcements_for_code(
     scripcode: str,
@@ -253,6 +277,10 @@ def resolve_scripcode(stock_identifier: str) -> Optional[str]:
         return None
 
 
+# --------------------------------------------------------------------
+# HIGH-LEVEL ENTRYPOINT (used by main.py)
+# --------------------------------------------------------------------
+
 def summarize_announcements_for_stock(
     stock_identifier: str,
     days: int = 60,
@@ -264,6 +292,8 @@ def summarize_announcements_for_stock(
     - Fetch announcements
     - For each of top `max_news` announcements with PDF, extract text & summarize
     - Return a dict ready to be JSON-ified
+
+    IMPORTANT: Output shape is unchanged so main.py and callers don't need edits.
     """
     result: Dict[str, Any] = {
         "stock": stock_identifier,
@@ -289,7 +319,7 @@ def summarize_announcements_for_stock(
         result["error"] = "No announcements found"
         return result
 
-    news_items = []
+    news_items: List[Dict[str, Any]] = []
     count = 0
 
     for idx, row in enumerate(rows):
