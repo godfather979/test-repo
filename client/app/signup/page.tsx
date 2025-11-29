@@ -1,10 +1,11 @@
 "use client"
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Mail, Lock, ArrowRight, ArrowLeft, Sparkles, Shield, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
+import { TrendingUp, User, Mail, Lock, ArrowRight,ArrowLeft, Sparkles, Shield, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
 
-export default function LoginPage() {
+export default function SignUpPage() {
   const [formData, setFormData] = useState({
+    name: '',
     email: '',
     password: ''
   });
@@ -28,7 +29,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/user/login', {
+      const response = await fetch('http://127.0.0.1:5000/user/signup', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -39,22 +40,17 @@ export default function LoginPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Invalid credentials');
+        throw new Error(data.error || 'Something went wrong');
       }
 
-      // Store tokens in localStorage
-      localStorage.setItem('idToken', data.idToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
       setSuccess(true);
-      // Redirect to market overview after 1.5 seconds
+      // Redirect to login or dashboard after 2 seconds
       setTimeout(() => {
         window.location.href = '/market-overview';
-      }, 1500);
+      }, 2000);
 
     } catch (err: any) {
-      setError(err.message || 'Failed to login. Please try again.');
+      setError(err.message || 'Failed to create account. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -66,7 +62,7 @@ export default function LoginPage() {
     }
   };
 
-  const isFormValid = formData.email.trim() && formData.password.length >= 6;
+  const isFormValid = formData.name.trim() && formData.email.trim() && formData.password.length >= 6;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-blue-50 flex items-center justify-center p-6">
@@ -93,6 +89,7 @@ export default function LoginPage() {
           </div>
           <span className="text-sm font-medium">Back to Home</span>
         </motion.a>
+        
 
         {/* Main Card */}
         <motion.div
@@ -111,11 +108,11 @@ export default function LoginPage() {
                 transition={{ delay: 0.3, type: "spring" }}
                 className="inline-flex items-center gap-2 px-3 py-1 bg-white/20 backdrop-blur-sm rounded-full text-sm font-medium mb-4"
               >
-                <Shield size={14} />
-                <span>Welcome Back</span>
+                <Sparkles size={14} />
+                <span>Start Your Journey</span>
               </motion.div>
-              <h1 className="text-3xl font-bold mb-2">Sign In</h1>
-              <p className="text-blue-100">Continue your trading journey</p>
+              <h1 className="text-3xl font-bold mb-2">Create Account</h1>
+              <p className="text-blue-100">Join thousands of smart traders</p>
             </div>
           </div>
 
@@ -135,16 +132,41 @@ export default function LoginPage() {
                 >
                   <CheckCircle2 className="text-green-600" size={40} />
                 </motion.div>
-                <h3 className="text-2xl font-bold text-slate-900 mb-2">Welcome Back!</h3>
-                <p className="text-slate-600">Taking you to Market Overview...</p>
+                <h3 className="text-2xl font-bold text-slate-900 mb-2">Account Created!</h3>
+                <p className="text-slate-600">Redirecting you to Market Overview...</p>
               </motion.div>
             ) : (
               <div className="space-y-5" onKeyPress={handleKeyPress}>
-                {/* Email Input */}
+                {/* Name Input */}
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.2 }}
+                >
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Full Name
+                  </label>
+                  <div className="relative group">
+                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                      <User className="text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                    </div>
+                    <input
+                      type="text"
+                      name="name"
+                      value={formData.name}
+                      onChange={handleChange}
+                      placeholder="John Doe"
+                      required
+                      className="w-full pl-12 pr-4 py-3.5 bg-slate-50 border-2 border-slate-200 rounded-xl focus:outline-none focus:border-blue-500 focus:bg-white transition-all text-slate-900 placeholder:text-slate-400"
+                    />
+                  </div>
+                </motion.div>
+
+                {/* Email Input */}
+                <motion.div
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: 0.3 }}
                 >
                   <label className="block text-sm font-semibold text-slate-700 mb-2">
                     Email Address
@@ -169,16 +191,11 @@ export default function LoginPage() {
                 <motion.div
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.3 }}
+                  transition={{ delay: 0.4 }}
                 >
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-semibold text-slate-700">
-                      Password
-                    </label>
-                    <a href="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
-                      Forgot Password?
-                    </a>
-                  </div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-2">
+                    Password
+                  </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                       <Lock className="text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
@@ -201,6 +218,7 @@ export default function LoginPage() {
                       {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                     </button>
                   </div>
+                  <p className="mt-2 text-xs text-slate-500">Must be at least 6 characters</p>
                 </motion.div>
 
                 {/* Error Message */}
@@ -234,11 +252,11 @@ export default function LoginPage() {
                         transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                         className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
                       />
-                      <span>Signing In...</span>
+                      <span>Creating Account...</span>
                     </>
                   ) : (
                     <>
-                      <span>Sign In</span>
+                      <span>Create Account</span>
                       <ArrowRight size={20} />
                     </>
                   )}
@@ -248,11 +266,11 @@ export default function LoginPage() {
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  transition={{ delay: 0.4 }}
+                  transition={{ delay: 0.5 }}
                   className="flex items-center justify-center gap-2 text-sm text-slate-500 pt-2"
                 >
                   <Shield size={16} className="text-green-600" />
-                  <span>Secure encrypted connection</span>
+                  <span>Your data is encrypted and secure</span>
                 </motion.div>
               </div>
             )}
@@ -261,9 +279,9 @@ export default function LoginPage() {
           {/* Footer */}
           <div className="px-8 pb-8">
             <div className="text-center text-sm text-slate-600">
-              Don't have an account?{' '}
-              <a href="/signup" className="text-blue-600 font-semibold hover:text-blue-700 transition-colors">
-                Create Account
+              Already have an account?{' '}
+              <a href="/login" className="text-blue-600 font-semibold hover:text-blue-700 transition-colors">
+                Sign In
               </a>
             </div>
           </div>
