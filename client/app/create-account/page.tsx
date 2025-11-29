@@ -25,33 +25,38 @@ export default function CreateAccountPage() {
         </p>
 
         <form className="flex flex-col gap-5">
+
+          {/* FULL NAME */}
           <div className="flex flex-col">
             <label className="text-sm text-gray-700">Full Name</label>
             <input
               type="text"
               placeholder="Enter your name"
-              className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="p-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-green-500 focus:outline-none"
             />
           </div>
 
+          {/* EMAIL */}
           <div className="flex flex-col">
             <label className="text-sm text-gray-700">Email</label>
             <input
               type="email"
               placeholder="Enter your email"
-              className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="p-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-green-500 focus:outline-none"
             />
           </div>
 
+          {/* PASSWORD */}
           <div className="flex flex-col">
             <label className="text-sm text-gray-700">Password</label>
             <input
               type="password"
               placeholder="Enter your password"
-              className="p-3 rounded-xl border border-gray-300 focus:ring-2 focus:ring-green-500 focus:outline-none"
+              className="p-3 rounded-xl border border-gray-300 bg-white text-gray-900 placeholder-gray-500 focus:ring-2 focus:ring-green-500 focus:outline-none"
             />
           </div>
 
+          {/* SUBMIT BUTTON */}
           <motion.button
             whileHover={{ scale: 1.03 }}
             whileTap={{ scale: 0.96 }}
@@ -67,6 +72,7 @@ export default function CreateAccountPage() {
             Login
           </a>
         </p>
+
       </motion.div>
     </main>
   );
