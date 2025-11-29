@@ -179,22 +179,33 @@ def calculate_ratios(data, source="Yahoo"):
 
 
 def analyze_stock_ratios(ticker: str):
-    """
-    High-level function to use in Flask:
-    - tries Yahoo Finance
-    - returns dict with ratios or error
-    """
-    data = get_data_yahoo(ticker)
+    try:
+        data = get_data_yahoo(ticker)
+        if not data:
+            return {
+                "ticker": ticker,
+                "source": "Yahoo Finance",
+                "ratios": None,
+                "error": "Failed to fetch data"
+            }
 
-    if not data:
+        ratios = calculate_ratios(data)
+
+        return {
+            "ticker": ticker,
+            "source": "Yahoo Finance",
+            "ratios": ratios,
+            "error": None,
+        }
+
+    except Exception as e:
         return {
             "ticker": ticker,
             "source": "Yahoo Finance",
             "ratios": None,
-            "error": "Financial data not available from Yahoo Finance",
+            "error": str(e)
         }
 
-    ratios = calculate_ratios(data)
 
     return {
         "ticker": ticker,
@@ -202,3 +213,14 @@ def analyze_stock_ratios(ticker: str):
         "ratios": ratios,
         "error": None,
     }
+
+def get_ratios_for_ticker(ticker: str):
+    """
+    Wrapper to return only the ratios dict
+    so main.py agent & ratios endpoint can consume it easily.
+    """
+    result = analyze_stock_ratios(ticker)
+    if not result or result.get("error"):
+        return None
+    
+    return result.get("ratios")

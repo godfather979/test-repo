@@ -5,6 +5,11 @@ from functools import wraps
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
+import threading
+from typing import Dict, Any, List
+
+
+
 
 import firebase_admin
 from firebase_admin import credentials, auth, firestore as admin_fs
@@ -71,6 +76,65 @@ def verify_firebase_token(f):
             return jsonify({"error": "Unauthorized", "details": str(e)}), 401
 
     return wrapper
+
+
+def normalize_symbol(raw_symbol: str) -> Dict[str, str]:
+    """
+    Take whatever the frontend sends (e.g. 'RELIANCE.NS', 'NSE:RELIANCE', '500325', 'RELIANCE')
+    and derive:
+      - base: e.g. 'RELIANCE'
+      - yahoo: e.g. 'RELIANCE.NS'
+      - tv: e.g. 'NSE:RELIANCE'
+      - bse_identifier: base name or numeric code for BSE helper
+
+    This is a simple heuristic for Indian largecaps; you can refine later.
+    """
+    sym = (raw_symbol or "").strip().upper()
+
+    base = sym
+    yahoo = sym
+    tv = sym
+    bse_identifier = sym
+
+    # Case 1: TradingView-style "NSE:RELIANCE"
+    if ":" in sym:
+        _, base_part = sym.split(":", 1)
+        base_part = base_part.strip().upper()
+        base = base_part
+        yahoo = base_part + ".NS"
+        tv = "NSE:" + base_part
+        bse_identifier = base_part
+
+    # Case 2: Yahoo-style "RELIANCE.NS"
+    elif sym.endswith(".NS"):
+        base_part = sym[:-3]
+        base = base_part
+        yahoo = sym
+        tv = "NSE:" + base_part
+        bse_identifier = base_part
+
+    # Case 3: pure digits -> BSE code
+    elif sym.isdigit():
+        base = sym
+        yahoo = sym  # may not be valid, but we leave as-is
+        tv = sym     # likely invalid for TV
+        bse_identifier = sym  # BSE helper already accepts numeric scripcode
+
+    # Case 4: plain name like "RELIANCE"
+    else:
+        base = sym
+        yahoo = sym + ".NS"
+        tv = "NSE:" + sym
+        bse_identifier = sym
+
+    return {
+        "raw": sym,
+        "base": base,
+        "yahoo": yahoo,
+        "tv": tv,
+        "bse_identifier": bse_identifier,
+    }
+
 
 # ====================== BASIC HEALTH ==========================
 
@@ -266,19 +330,27 @@ def add_to_wishlist():
         merge=True,
     )
 
-    # Fetch updated wishlist
     doc = user_ref.get()
     wishlist = doc.to_dict().get("wishlist", [])
 
-    # 🔥 NEW: compute + cache all data for this stock
-    try:
-        compute_and_cache_stock_for_user(uid, symbol)
-        status_msg = "wishlist updated and stock data cached"
-    except Exception as e:
-        # We don't want to fail wishlist addition just because caching failed
-        status_msg = f"wishlist updated but caching failed: {e}"
+    # 🔥 Run heavy compute in background thread
+    def _worker():
+        try:
+            compute_and_cache_stock_for_user(uid, symbol)
+        except Exception as e:
+            print(f"[cache worker] error for {symbol}: {e}")
 
-    return jsonify({"userID": uid, "wishlist": wishlist, "status": status_msg}), 200
+    threading.Thread(target=_worker, daemon=True).start()
+
+    # Respond immediately
+    return jsonify(
+        {
+            "userID": uid,
+            "wishlist": wishlist,
+            "status": "wishlist updated; cache refresh started in background",
+        }
+    ), 200
+
 
 
 
@@ -654,25 +726,35 @@ def refresh_my_cache():
 def compute_and_cache_stock_for_user(uid: str, symbol: str):
     """
     For a given user + stock symbol:
-    - compute BSE summaries
-    - compute chart pattern (TradingView + Groq vision)
-    - compute financial ratios
+    - compute BSE summaries (using bse_identifier)
+    - compute chart pattern (using tv symbol)
+    - compute financial ratios (using yahoo symbol)
     - run agentic prediction
-    - save everything into users/{uid}/stock_cache/{symbol}
+    - save everything into users/{uid}/stock_cache/{yahoo_symbol}
     """
-    symbol = symbol.strip().upper()
+    mapping = normalize_symbol(symbol)
+    raw_symbol = mapping["raw"]
+    base_symbol = mapping["base"]
+    yahoo_symbol = mapping["yahoo"]
+    tv_symbol = mapping["tv"]
+    bse_identifier = mapping["bse_identifier"]
+
     user_ref = db.collection("users").document(uid)
-    cache_ref = user_ref.collection("stock_cache").document(symbol)
+    cache_ref = user_ref.collection("stock_cache").document(yahoo_symbol)
 
     cache_data = {
-        "symbol": symbol,
+        "symbol": yahoo_symbol,
+        "raw_symbol": raw_symbol,
+        "base_symbol": base_symbol,
+        "tv_symbol": tv_symbol,
+        "bse_identifier": bse_identifier,
         "updatedAt": SERVER_TIMESTAMP,
     }
 
     # --- 1) BSE Summaries (news) ---
     try:
         bse_result = summarize_announcements_for_stock(
-            stock_identifier=symbol,
+            stock_identifier=bse_identifier,
             days=60,
             max_news=3,
         )
@@ -685,30 +767,25 @@ def compute_and_cache_stock_for_user(uid: str, symbol: str):
         charts_dir = "./charts"
         os.makedirs(charts_dir, exist_ok=True)
 
-        safe_symbol = symbol.replace(":", "_").replace("/", "_")
+        safe_symbol = tv_symbol.replace(":", "_").replace("/", "_")
         output_path = os.path.join(charts_dir, f"{safe_symbol}_D.png")
 
         screenshot_path = get_tradingview_chart_screenshot(
-            tv_symbol=symbol,
+            tv_symbol=tv_symbol,
             interval="D",
             output_path=output_path,
         )
 
         raw_pattern = detect_chart_pattern(screenshot_path)
 
-        # detect_chart_pattern currently returns JSON string; try to parse
-        try:
-            pattern_info = json.loads(raw_pattern)
-        except Exception:
-            pattern_info = {"raw": raw_pattern}
-
-        cache_data["chart_pattern"] = pattern_info
+        # detect_chart_pattern returns a dict in our latest version
+        cache_data["chart_pattern"] = raw_pattern
     except Exception as e:
         cache_data["chart_error"] = f"{e}"
 
-    # --- 3) Financial ratios ---
+    # --- 3) Financial ratios (Yahoo) ---
     try:
-        ratios = get_ratios_for_ticker(symbol)
+        ratios = get_ratios_for_ticker(yahoo_symbol)
         if ratios is not None:
             cache_data["ratios"] = ratios
         else:
@@ -721,7 +798,7 @@ def compute_and_cache_stock_for_user(uid: str, symbol: str):
     try:
         if "ratios" in cache_data:
             ctx = StockSignalInput(
-                ticker=symbol,
+                ticker=yahoo_symbol,
                 ratios=cache_data["ratios"],
             )
             signal = run_stock_signal(ctx)
@@ -731,6 +808,7 @@ def compute_and_cache_stock_for_user(uid: str, symbol: str):
 
     # --- 5) Save to Firestore ---
     cache_ref.set(cache_data, merge=True)
+
 
 # ======================== MAIN ================================
 

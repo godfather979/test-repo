@@ -52,20 +52,17 @@ class StockSignalOutput(BaseModel):
 
 stock_signal_agent = Agent(
     model=Groq(id="llama-3.3-70b-versatile"),
-    tools=[DuckDuckGoTools()],
     input_schema=StockSignalInput,
     output_schema=StockSignalOutput,
     description=(
         "You are a cautious stock analysis assistant. "
-        "You receive PRE-COMPUTED financial ratios (from Python) and may use DuckDuckGo "
-        "to look up *recent public info* on the company. "
+        "You receive PRE-COMPUTED financial ratios (from Python). "
         "Use the ratios like a real analyst (ROE, ROCE, Debt/Equity, margins, liquidity, etc.). "
         "Output a bullish/neutral/bearish BIAS and confidence with reasons & risks. "
         "NEVER tell the user to buy or sell, and NEVER give exact targets/stop-loss levels."
     ),
-    markdown=False,
-    show_tool_calls=False,
 )
+
 
 
 def run_stock_signal(input_data: StockSignalInput) -> StockSignalOutput:
