@@ -1,67 +1,82 @@
-"use client"
-import React, { useState } from 'react';
-import { motion } from 'framer-motion';
-import { TrendingUp, Mail, Lock, ArrowRight, ArrowLeft, Sparkles, Shield, Eye, EyeOff, CheckCircle2, AlertCircle } from 'lucide-react';
+"use client";
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import {
+  TrendingUp,
+  Mail,
+  Lock,
+  ArrowRight,
+  ArrowLeft,
+  Sparkles,
+  Shield,
+  Eye,
+  EyeOff,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL;
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     });
-    setError('');
+    setError("");
   };
 
   const handleSubmit = async () => {
     if (!isFormValid || loading) return;
-    
+
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
-      const response = await fetch('http://127.0.0.1:5000/user/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/user/login`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(formData),
         },
-        body: JSON.stringify(formData)
-      });
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Invalid credentials');
+        throw new Error(data.error || "Invalid credentials");
       }
 
       // Store tokens in localStorage
-      localStorage.setItem('idToken', data.idToken);
-      localStorage.setItem('refreshToken', data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem("idToken", data.idToken);
+      localStorage.setItem("refreshToken", data.refreshToken);
+      localStorage.setItem("user", JSON.stringify(data.user));
 
       setSuccess(true);
       // Redirect to market overview after 1.5 seconds
       setTimeout(() => {
-        window.location.href = '/market-overview';
+        window.location.href = "/market-overview";
       }, 1500);
-
     } catch (err: any) {
-      setError(err.message || 'Failed to login. Please try again.');
+      setError(err.message || "Failed to login. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && isFormValid && !loading) {
+    if (e.key === "Enter" && isFormValid && !loading) {
       handleSubmit();
     }
   };
@@ -73,7 +88,7 @@ export default function LoginPage() {
       {/* Decorative Elements */}
       <div className="absolute top-20 left-20 w-72 h-72 bg-blue-500/10 rounded-full blur-3xl" />
       <div className="absolute bottom-20 right-20 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl" />
-      
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -135,8 +150,12 @@ export default function LoginPage() {
                 >
                   <CheckCircle2 className="text-green-600" size={40} />
                 </motion.div>
-                <h3 className="text-2xl font-bold text-slate-900 mb-2">Welcome Back!</h3>
-                <p className="text-slate-600">Taking you to Market Overview...</p>
+                <h3 className="text-2xl font-bold text-slate-900 mb-2">
+                  Welcome Back!
+                </h3>
+                <p className="text-slate-600">
+                  Taking you to Market Overview...
+                </p>
               </motion.div>
             ) : (
               <div className="space-y-5" onKeyPress={handleKeyPress}>
@@ -151,7 +170,10 @@ export default function LoginPage() {
                   </label>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <Mail className="text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                      <Mail
+                        className="text-slate-400 group-focus-within:text-blue-600 transition-colors"
+                        size={20}
+                      />
                     </div>
                     <input
                       type="email"
@@ -175,13 +197,19 @@ export default function LoginPage() {
                     <label className="block text-sm font-semibold text-slate-700">
                       Password
                     </label>
-                    <a href="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors">
+                    <a
+                      href="/forgot-password"
+                      className="text-xs text-blue-600 hover:text-blue-700 font-medium transition-colors"
+                    >
                       Forgot Password?
                     </a>
                   </div>
                   <div className="relative group">
                     <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                      <Lock className="text-slate-400 group-focus-within:text-blue-600 transition-colors" size={20} />
+                      <Lock
+                        className="text-slate-400 group-focus-within:text-blue-600 transition-colors"
+                        size={20}
+                      />
                     </div>
                     <input
                       type={showPassword ? "text" : "password"}
@@ -210,7 +238,10 @@ export default function LoginPage() {
                     animate={{ opacity: 1, y: 0 }}
                     className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl"
                   >
-                    <AlertCircle className="text-red-600 flex-shrink-0 mt-0.5" size={20} />
+                    <AlertCircle
+                      className="text-red-600 flex-shrink-0 mt-0.5"
+                      size={20}
+                    />
                     <p className="text-sm text-red-700">{error}</p>
                   </motion.div>
                 )}
@@ -223,15 +254,19 @@ export default function LoginPage() {
                   whileTap={{ scale: isFormValid && !loading ? 0.98 : 1 }}
                   className={`w-full py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-2 transition-all ${
                     isFormValid && !loading
-                      ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      ? "bg-gradient-to-r from-blue-600 to-cyan-600 text-white shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40"
+                      : "bg-slate-200 text-slate-400 cursor-not-allowed"
                   }`}
                 >
                   {loading ? (
                     <>
                       <motion.div
                         animate={{ rotate: 360 }}
-                        transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                        transition={{
+                          duration: 1,
+                          repeat: Infinity,
+                          ease: "linear",
+                        }}
                         className="w-5 h-5 border-2 border-white border-t-transparent rounded-full"
                       />
                       <span>Signing In...</span>
@@ -261,8 +296,11 @@ export default function LoginPage() {
           {/* Footer */}
           <div className="px-8 pb-8">
             <div className="text-center text-sm text-slate-600">
-              Don't have an account?{' '}
-              <a href="/signup" className="text-blue-600 font-semibold hover:text-blue-700 transition-colors">
+              Don't have an account?{" "}
+              <a
+                href="/signup"
+                className="text-blue-600 font-semibold hover:text-blue-700 transition-colors"
+              >
                 Create Account
               </a>
             </div>
@@ -279,7 +317,7 @@ export default function LoginPage() {
           {[
             { icon: Sparkles, text: "AI-Powered" },
             { icon: Shield, text: "Secure" },
-            { icon: TrendingUp, text: "Real-Time" }
+            { icon: TrendingUp, text: "Real-Time" },
           ].map((item, i) => (
             <motion.div
               key={i}
@@ -287,7 +325,9 @@ export default function LoginPage() {
               className="flex flex-col items-center gap-2 p-3 bg-white/50 backdrop-blur-sm rounded-xl border border-slate-200"
             >
               <item.icon className="text-blue-600" size={20} />
-              <span className="text-xs font-medium text-slate-600">{item.text}</span>
+              <span className="text-xs font-medium text-slate-600">
+                {item.text}
+              </span>
             </motion.div>
           ))}
         </motion.div>

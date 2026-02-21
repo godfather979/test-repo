@@ -262,6 +262,7 @@ def resolve_scripcode(stock_identifier: str) -> Optional[str]:
     If numeric, treat as scripcode directly.
     Otherwise, try to resolve via BSE getScripCode.
     """
+    print(f"[Resolve] Attempting to resolve: {stock_identifier}")
     stock_identifier = (stock_identifier or "").strip()
     if not stock_identifier:
         return None
@@ -272,6 +273,7 @@ def resolve_scripcode(stock_identifier: str) -> Optional[str]:
     bse = BSE(download_folder="./downloads")
     try:
         code = bse.getScripCode(stock_identifier)
+        print(f"[Resolve] Resolved to scripcode: {code}")
         return str(code) if code else None
     except Exception:
         return None
@@ -284,7 +286,7 @@ def resolve_scripcode(stock_identifier: str) -> Optional[str]:
 def summarize_announcements_for_stock(
     stock_identifier: str,
     days: int = 60,
-    max_news: int = 3,
+    max_news: int = 5,
 ) -> Dict[str, Any]:
     """
     High-level helper:

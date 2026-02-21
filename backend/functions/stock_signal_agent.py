@@ -54,6 +54,7 @@ stock_signal_agent = Agent(
     model=Groq(id="llama-3.3-70b-versatile"),
     input_schema=StockSignalInput,
     output_schema=StockSignalOutput,
+    tools=[DuckDuckGoTools()],  
     description=(
         "You are a cautious stock analysis assistant. "
         "You receive PRE-COMPUTED financial ratios (from Python). "

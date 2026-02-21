@@ -47,6 +47,18 @@ def close_popups(driver):
     print("[Popup] No popup detected or unable to close")
 
 
+def safe_screenshot(canvas, path: str, retries: int = 2):
+    """
+    Retry screenshot in case canvas rendering is delayed.
+    """
+    for attempt in range(retries):
+        try:
+            canvas.screenshot(path)
+            return True
+        except Exception:
+            time.sleep(2)
+    return False
+
 def get_tradingview_chart_screenshot(
     tv_symbol: str,
     interval: str = "D",
@@ -77,7 +89,10 @@ def get_tradingview_chart_screenshot(
 
     try:
         driver.get(url)
-        time.sleep(6)  # allow chart + popup to appear
+        # Wait for page load more intelligently instead of fixed sleep
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.TAG_NAME, "canvas"))
+        )
 
         # Close promo popup if visible
         close_popups(driver)
@@ -101,9 +116,10 @@ def get_tradingview_chart_screenshot(
                 key=lambda c: c.size.get("width", 0) * c.size.get("height", 0)
             )
 
-        time.sleep(2)
+        time.sleep(4)
         output_path = str(out_path.resolve())
-        canvas.screenshot(output_path)
+        if not safe_screenshot(canvas, output_path):
+            raise RuntimeError("Failed to capture chart screenshot after retries")
         return output_path
 
     finally:
