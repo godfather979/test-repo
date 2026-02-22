@@ -47,21 +47,6 @@ def close_popups(driver):
     print("[Popup] No popup detected or unable to close")
 
 
-def get_tradingview_chart_screenshot(
-    tv_symbol: str,
-    interval: str = "D",
-    output_path: str = "chart.png"
-) -> str:
-    """
-    Open TradingView chart for given symbol & interval,
-    screenshot the main canvas, save to output_path, and return the absolute path.
-    """
-    # Ensure charts directory exists
-    out_path = Path(output_path)
-    if not out_path.parent.exists():
-        os.makedirs(out_path.parent, exist_ok=True)
-
-    url = f"https://www.tradingview.com/chart/?symbol={tv_symbol}&interval={interval}"
 
     chrome_options = Options()
     chrome_options.add_argument("--headless=new")
